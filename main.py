@@ -107,9 +107,8 @@ def main():
 
         if result_set is None:  # nothing to unpack handle scenario without target ,or plain select.
             continue
-        target_db_tbl, source_db_tbl=result_set
-        lineage.append((target_db_tbl, source_db_tbl))
-        
+        if result_set not in lineage: # avoid duplicates combination of target and sources
+            lineage.append(result_set)
 
     print("temp tables")
     print(temp_tables)
