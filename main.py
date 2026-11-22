@@ -1,5 +1,6 @@
 import sqlglot
-from sqlglot import exp 
+from sqlglot import exp
+from sqlglot.errors import ParseError
 
 def is_table_volatile(tree):
     if not isinstance(tree, exp.Create):
@@ -35,19 +36,22 @@ def get_table_lineage (tree,temp_tables):
     first_level = tree.this
     if isinstance(first_level, exp.Table):
         target_table_node = first_level
-    elif isinstance(first_level.this, exp.Table):
+    elif isinstance(first_level,exp.Schema) and isinstance(first_level.this, exp.Table):
          target_table_node = first_level.this
     else:
         print("target cannot be determined")
         return None
+    print("-----start-----")
     print(f"target db={target_table_node.db} target table = {target_table_node.name}")
     sources = []
     for node in tree.find_all(exp.Table):
         if node is not target_table_node:
             print(f"source db={node.db} souce table name={node.name}")
             temp_src_list = temp_tables.get(full_name(node))
+            print("temp_src_list type ",type(temp_src_list),"temp_src_list",temp_src_list)
             if temp_src_list is not None:
-                sources.extend(temp_src_list)
+                print("inside if before extend ",temp_src_list)
+                sources.extend(temp_src_list)               
             else:
                 sources.append(full_name(node))
     
@@ -55,7 +59,7 @@ def get_table_lineage (tree,temp_tables):
         temp_tables[full_name(target_table_node)] =sources
         print("inside is table volatile",temp_tables)
         return None  
-
+    print("-----end-----")
     return (full_name(target_table_node), sources)
 
 def read_sql_statemets(file_path):
@@ -80,19 +84,32 @@ def main():
     temp_tables={}
     file_path = "data/query_log.sql"
     sql_statements=read_sql_statemets(file_path)
-    i=1
+    i=0
     for sql in sql_statements:
+        i= i+1
         if sql.strip().upper().startswith(("EXEC ", "EXECUTE ", "CALL ")):
             print("FLAG: macro/procedure call, lineage not recoverable from log text")
             continue
-        tree = sqlglot.parse_one(sql, read="teradata")   # SQL text → tree
+        try:
+            tree = sqlglot.parse_one(sql, read="teradata")   # SQL text → tree
+        except ParseError as e:
+            print(f"Error parsing SQL statement {i}:{sql} : {e}")
+            continue
+
         print(f"printing source and target tables for sql{i}")
-        result_set=get_table_lineage(tree,temp_tables)
+        try:
+            result_set=get_table_lineage(tree,temp_tables)
+        except Exception as e:
+            print(f"Error processing SQL statement {i}:{sql} : {e}")
+            if "VOLATILE"in sql.upper():
+                print("WARNING: volatile table, not created , if used as source table in later sqls, lineage may be incomplete")
+            continue
+
         if result_set is None:  # nothing to unpack handle scenario without target ,or plain select.
             continue
         target_db_tbl, source_db_tbl=result_set
         lineage.append((target_db_tbl, source_db_tbl))
-        i= i+1
+        
 
     print("temp tables")
     print(temp_tables)

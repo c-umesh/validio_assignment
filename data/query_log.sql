@@ -4,6 +4,8 @@ SELECT deptno, name, yrsexp
 FROM hr.employee
 WHERE yrsexp > 10;
 
+--
+SELEC FROM;
 -- 2
 INSERT INTO silver_layer.target_table_xyz
 SELECT *
@@ -48,11 +50,31 @@ CREATE MULTISET VOLATILE TABLE vt_collateral AS (
 ) WITH DATA PRIMARY INDEX (collateral_id)
 ON COMMIT PRESERVE ROWS;
 
+--
+
+-- 5
+CREATE MULTISET VOLATILE TABLE vt_collateral2 AS (
+    SEL collateral_id, customer_id, collateral_value
+    FROM raw.collateral_feed AS cf
+    INNER JOIN  raw.collateral_feed_hist AS cfh
+    ON cf.collateral_id = cfh.collateral_id
+    WHERE load_ts > CURRENT_DATE - 1
+) WITH DATA PRIMARY INDEX (collateral_id)
+ON COMMIT PRESERVE ROWS;
+
 -- 6
 INS INTO gold.risk_report_daily (customer_id, exposure_amt, collateral_value, rating)
 SEL e.customer_id, e.exposure_amt, v.collateral_value, e.rating
 FROM credit_risk.exposure_daily e
 LEFT OUTER JOIN vt_collateral v
+    ON e.customer_id = v.customer_id
+QUALIFY ROW_NUMBER() OVER (PARTITION BY e.customer_id ORDER BY e.exposure_amt DESC) = 1;
+
+--
+INS INTO gold.risk_report_daily2 (customer_id, exposure_amt, collateral_value, rating)
+SEL e.customer_id, e.exposure_amt, v.collateral_value, e.rating
+FROM credit_risk.exposure_daily e
+LEFT OUTER JOIN vt_collateral2 v
     ON e.customer_id = v.customer_id
 QUALIFY ROW_NUMBER() OVER (PARTITION BY e.customer_id ORDER BY e.exposure_amt DESC) = 1;
 
