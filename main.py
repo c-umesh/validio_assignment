@@ -1,6 +1,14 @@
 import sqlglot
 from sqlglot import exp
 from sqlglot.errors import ParseError
+from datetime import datetime, timezone
+import json
+import uuid
+
+NAMESPACE  = "teradata://dummy-logs-customer"          # tells Validio: these are Teradata tables
+PRODUCER   = "https://example.com/sql-lineage-tool"   # identifies our tool
+SCHEMA_URL = "https://openlineage.io/spec/2-0-2/OpenLineage.json#/$defs/RunEvent"
+
 
 def is_table_volatile(tree):
     if not isinstance(tree, exp.Create):
@@ -79,6 +87,30 @@ def read_sql_statemets(file_path):
             sql_statements.append(sql)
     return sql_statements
 
+
+#build event for open lineage api for each sql statement as part of lineage
+def build_event_for_api(target,sources,job_name):
+    input_source_tables=[]
+    for src_tables in sources:
+        inp_item={
+            "namespace": NAMESPACE,
+            "name": src_tables
+        }
+        input_source_tables.append(inp_item)
+
+    event = {
+        "eventType": "COMPLETE",
+        "eventTime": datetime.now(timezone.utc).isoformat(),
+        "run":{"runId": str(uuid.uuid4())},
+        "job": {"namespace": "dummy-assignment-query-log", "name": job_name},
+        "producer":PRODUCER,
+        "schemaURL": SCHEMA_URL,
+        "outputs": [{"namespace":NAMESPACE, "name": target}],
+        "inputs": input_source_tables
+    }
+    return event
+
+
 def main():
     lineage=[]
     temp_tables={}
@@ -113,9 +145,18 @@ def main():
     print("temp tables")
     print(temp_tables)
     print("printing lineage")
-    for target, sources in lineage:
-        print(f"{target} -> {sources}") 
 
+    # build events for open lineage api
+    events=[]
+    i=0
+    for target, sources in lineage:
+        i=i+1
+        print(f"{target} -> {sources}")
+        events.append(build_event_for_api(target,sources,f"sql_job_{i}"))
+    
+    print("printing events in json format for open lineage api")
+    for event in events:
+        print(json.dumps(event, indent=2))
 
 if __name__ == "__main__":
     main()
